@@ -201,6 +201,9 @@ function run_test_with_version_profile() {
       else
         if [ "$error_msg" != "" ];then
           echo "$log_prefix $TEST_FAILURE: $error_msg, version: $version_profile, please check logs: $scenario_home/logs" | tee -a $testResultFile
+          echo "======begin scenario_log====="
+          cat $scenario_log
+          echo "======end scenario_log====="
         else
           echo "$log_prefix $TEST_FAILURE, version: $version_profile, please check logs: $scenario_home/logs" | tee -a $testResultFile
         fi
@@ -291,7 +294,7 @@ function process_case() {
 
   runtime_count=0
   if [ ! -f $output_parameter_runtime_file ]; then
-    echo "case runtime config not found: $output_parameter_runtime_file" | tee -a $testResultFile
+    echo "case runtime config not found: $output_parameter_runtime_file"
   else
     runtime_count=`grep -vc '^$' $output_parameter_runtime_file `
     echo "$log_prefix Runtime parameter: $runtime_count"
@@ -468,6 +471,8 @@ echo "All tests count: $totalCount"
 echo "Success tests count: $successTest"
 echo "Ignored tests count: $ignoredTest"
 echo "Failed tests count: $failedTest"
+echo "----------------------begin cat result------------------------------------"
+cat $testResultFile
 echo "----------------------------------------------------------"
 
 if [ $ignoredTest -gt 0 ]; then
