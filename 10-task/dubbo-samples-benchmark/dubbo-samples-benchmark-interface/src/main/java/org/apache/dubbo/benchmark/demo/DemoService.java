@@ -16,7 +16,10 @@
  */
 package org.apache.dubbo.benchmark.demo;
 
+import org.apache.skywalking.apm.toolkit.trace.Trace;
+
 public interface DemoService {
 
+    @Trace
     String sayHello(String name);
 }
