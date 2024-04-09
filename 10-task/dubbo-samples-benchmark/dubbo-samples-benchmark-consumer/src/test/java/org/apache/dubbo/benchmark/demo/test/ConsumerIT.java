@@ -33,8 +33,6 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.results.format.ResultFormatType;
 import org.openjdk.jmh.runner.Runner;
-import org.openjdk.jmh.runner.RunnerException;
-import org.openjdk.jmh.runner.options.ChainedOptionsBuilder;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
@@ -50,13 +48,14 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class ConsumerIT {
 
     String propKey = "prop";
 
     @Test
-    public void test() throws RunnerException {
+    public void test() throws Exception {
 
         String prop = System.getProperty(propKey);
         String propJson = null;
@@ -78,21 +77,75 @@ public class ConsumerIT {
             prop = String.join("_", propList);
         }
 
-        Options options;
-        ChainedOptionsBuilder optBuilder = new OptionsBuilder()
+        String sampleFileName = runSample(propJson, prop);
+
+        runThroughput(propJson, sampleFileName);
+
+    }
+
+    private static void runThroughput(String propJson, String sampleFileName) throws Exception {
+        Class<?> agentClassLoaderClass = Class.forName("org.apache.skywalking.apm.agent.core.plugin.loader.AgentClassLoader");
+        Object agentClassLoader = agentClassLoaderClass.getDeclaredMethod("getDefault").invoke(null);
+
+        Class<?> SimpleControlExtendService = Class.forName("org.apache.dubbo.benchmark.agent.SimpleControlExtendService", false, (ClassLoader) agentClassLoader);
+        SimpleControlExtendService.getDeclaredMethod("close").invoke(null);
+
+        String throughputFileName = "/tmp/" + UUID.randomUUID() + ".json";
+
+        Options options = new OptionsBuilder()
                 .include(MyBenchmark.class.getSimpleName())
                 .param("time", System.currentTimeMillis() + "")
                 .param("prop", propJson == null ? "" : propJson)
+                .result(throughputFileName)
+                .resultFormat(ResultFormatType.JSON)
                 .mode(Mode.Throughput)
-                .mode(Mode.SampleTime)
                 .threads(32)
-                .forks(1);
+                .forks(1)
+                .build();
 
-        options = doOptions(optBuilder, prop).build();
+        new Runner(options).run();
+
+        // 读取 JMH 结果 JSON 文件
+        String sampleResultJson = FileUtils.readFileToString(new File(sampleFileName), "UTF-8");
+        String throughputResultJson = FileUtils.readFileToString(new File(throughputFileName), "UTF-8");
+
+        // 将 JSON 转换为适当的数据结构（例如 List 或 Map）
+        Gson gson = new Gson();
+        List firstResults = gson.fromJson(sampleResultJson, List.class);
+        List secondResults = gson.fromJson(throughputResultJson, List.class);
+
+        // 合并 JMH 结果
+        firstResults.addAll(secondResults);
+
+        // 将合并后的结果保存回一个 JSON 文件
+        String mergedResultJson = gson.toJson(firstResults);
+        FileUtils.writeStringToFile(new File(sampleFileName), mergedResultJson, "UTF-8");
+    }
+
+    private String runSample(String propJson, String prop) throws Exception {
+        String fileName;
+        if (StringUtils.isNotBlank(prop)) {
+            fileName = "/tmp/jmh_result_prop[" + prop + "].json";
+        } else {
+            fileName = "/tmp/jmh_result.json";
+        }
+
+        Options options = new OptionsBuilder()
+                .include(MyBenchmark.class.getSimpleName())
+                .param("time", System.currentTimeMillis() + "")
+                .param("prop", propJson == null ? "" : propJson)
+                .mode(Mode.SampleTime)
+                .result(fileName)
+                .resultFormat(ResultFormatType.JSON)
+                .threads(32)
+                .forks(1)
+                .build();
+
         new Runner(options).run();
 
         dotTrace(prop, propKey, propJson);
 
+        return fileName;
     }
 
     private static void dotTrace(String prop, String propKey, String propJson) {
@@ -176,16 +229,6 @@ public class ConsumerIT {
             }
         }
 
-    }
-
-    private static ChainedOptionsBuilder doOptions(ChainedOptionsBuilder optBuilder, String prop) {
-        if (StringUtils.isNotBlank(prop)) {
-            optBuilder.result("/tmp/jmh_result_prop[" + prop + "].json");
-        } else {
-            optBuilder.result("/tmp/jmh_result.json");
-        }
-        optBuilder.resultFormat(ResultFormatType.JSON);
-        return optBuilder;
     }
 
     @State(Scope.Benchmark)
