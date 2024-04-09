@@ -83,13 +83,36 @@ public class ConsumerIT {
 
     }
 
+    private String runSample(String propJson, String prop) throws Exception {
+        String fileName;
+        if (StringUtils.isNotBlank(prop)) {
+            fileName = "/tmp/jmh_result_prop[" + prop + "].json";
+        } else {
+            fileName = "/tmp/jmh_result.json";
+        }
+
+        Options options = new OptionsBuilder()
+                .include(MyBenchmark.class.getSimpleName())
+                .param("time", System.currentTimeMillis() + "")
+                .param("prop", propJson == null ? "" : propJson)
+                .mode(Mode.SampleTime)
+                .result(fileName)
+                .resultFormat(ResultFormatType.JSON)
+                .jvmArgs("-javaagent:/tmp/skywalking-agent/skywalking-agent.jar"
+                        , "-Dskywalking.agent.service_name=dubbo-samples-benchmark-consumer",
+                        "-Dskywalking.collector.backend_service=skywalking:11800")
+                .threads(32)
+                .forks(1)
+                .build();
+
+        new Runner(options).run();
+
+        dotTrace(prop, propKey, propJson);
+
+        return fileName;
+    }
+
     private static void runThroughput(String propJson, String sampleFileName) throws Exception {
-        Class<?> agentClassLoaderClass = Class.forName("org.apache.skywalking.apm.agent.core.plugin.loader.AgentClassLoader");
-        Object agentClassLoader = agentClassLoaderClass.getDeclaredMethod("getDefault").invoke(null);
-
-        Class<?> SimpleControlExtendService = Class.forName("org.apache.dubbo.benchmark.agent.SimpleControlExtendService", false, (ClassLoader) agentClassLoader);
-        SimpleControlExtendService.getDeclaredMethod("close").invoke(null);
-
         String throughputFileName = "/tmp/" + UUID.randomUUID() + ".json";
 
         Options options = new OptionsBuilder()
@@ -120,32 +143,6 @@ public class ConsumerIT {
         // 将合并后的结果保存回一个 JSON 文件
         String mergedResultJson = gson.toJson(firstResults);
         FileUtils.writeStringToFile(new File(sampleFileName), mergedResultJson, "UTF-8");
-    }
-
-    private String runSample(String propJson, String prop) throws Exception {
-        String fileName;
-        if (StringUtils.isNotBlank(prop)) {
-            fileName = "/tmp/jmh_result_prop[" + prop + "].json";
-        } else {
-            fileName = "/tmp/jmh_result.json";
-        }
-
-        Options options = new OptionsBuilder()
-                .include(MyBenchmark.class.getSimpleName())
-                .param("time", System.currentTimeMillis() + "")
-                .param("prop", propJson == null ? "" : propJson)
-                .mode(Mode.SampleTime)
-                .result(fileName)
-                .resultFormat(ResultFormatType.JSON)
-                .threads(32)
-                .forks(1)
-                .build();
-
-        new Runner(options).run();
-
-        dotTrace(prop, propKey, propJson);
-
-        return fileName;
     }
 
     private static void dotTrace(String prop, String propKey, String propJson) {
