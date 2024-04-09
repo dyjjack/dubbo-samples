@@ -37,6 +37,7 @@ import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -79,8 +80,26 @@ public class ConsumerIT {
 
         String sampleFileName = runSample(propJson, prop);
 
-        runThroughput(propJson, sampleFileName);
+        dotTrace(prop, propKey, propJson);
 
+        String throughputFileName = runThroughput(propJson);
+
+        mergeResult(sampleFileName, throughputFileName);
+
+    }
+
+    private static void mergeResult(String sampleFileName, String throughputFileName) throws IOException {
+        String sampleResultJson = FileUtils.readFileToString(new File(sampleFileName), "UTF-8");
+        String throughputResultJson = FileUtils.readFileToString(new File(throughputFileName), "UTF-8");
+
+        Gson gson = new Gson();
+        List firstResults = gson.fromJson(sampleResultJson, List.class);
+        List secondResults = gson.fromJson(throughputResultJson, List.class);
+
+        firstResults.addAll(secondResults);
+
+        String mergedResultJson = gson.toJson(firstResults);
+        FileUtils.writeStringToFile(new File(sampleFileName), mergedResultJson, "UTF-8");
     }
 
     private String runSample(String propJson, String prop) throws Exception {
@@ -95,32 +114,28 @@ public class ConsumerIT {
                 .include(MyBenchmark.class.getSimpleName())
                 .param("time", System.currentTimeMillis() + "")
                 .param("prop", propJson == null ? "" : propJson)
-                .mode(Mode.SampleTime)
-                .result(fileName)
                 .resultFormat(ResultFormatType.JSON)
-                .jvmArgs("-javaagent:/tmp/skywalking-agent/skywalking-agent.jar"
-                        , "-Dskywalking.agent.service_name=dubbo-samples-benchmark-consumer",
-                        "-Dskywalking.collector.backend_service=skywalking:11800")
+                .result(fileName)
+                .mode(Mode.SampleTime)
                 .threads(32)
                 .forks(1)
                 .build();
 
         new Runner(options).run();
 
-        dotTrace(prop, propKey, propJson);
-
         return fileName;
     }
 
-    private static void runThroughput(String propJson, String sampleFileName) throws Exception {
-        String throughputFileName = "/tmp/" + UUID.randomUUID() + ".json";
+    private static String runThroughput(String propJson) throws Exception {
+        String fileName = "/tmp/" + UUID.randomUUID() + ".json";
 
         Options options = new OptionsBuilder()
                 .include(MyBenchmark.class.getSimpleName())
                 .param("time", System.currentTimeMillis() + "")
                 .param("prop", propJson == null ? "" : propJson)
-                .result(throughputFileName)
                 .resultFormat(ResultFormatType.JSON)
+                .result(fileName)
+                .jvmArgs("-Dzookeeper.address=zookeeper")
                 .mode(Mode.Throughput)
                 .threads(32)
                 .forks(1)
@@ -128,21 +143,7 @@ public class ConsumerIT {
 
         new Runner(options).run();
 
-        // 读取 JMH 结果 JSON 文件
-        String sampleResultJson = FileUtils.readFileToString(new File(sampleFileName), "UTF-8");
-        String throughputResultJson = FileUtils.readFileToString(new File(throughputFileName), "UTF-8");
-
-        // 将 JSON 转换为适当的数据结构（例如 List 或 Map）
-        Gson gson = new Gson();
-        List firstResults = gson.fromJson(sampleResultJson, List.class);
-        List secondResults = gson.fromJson(throughputResultJson, List.class);
-
-        // 合并 JMH 结果
-        firstResults.addAll(secondResults);
-
-        // 将合并后的结果保存回一个 JSON 文件
-        String mergedResultJson = gson.toJson(firstResults);
-        FileUtils.writeStringToFile(new File(sampleFileName), mergedResultJson, "UTF-8");
+        return fileName;
     }
 
     private static void dotTrace(String prop, String propKey, String propJson) {
@@ -209,7 +210,7 @@ public class ConsumerIT {
 
         } catch (Exception e) {
             e.printStackTrace();
-            System.out.println("mysql test error");
+            System.out.println("dotTrace error");
         } finally {
             try {
                 if (resultSet != null) {

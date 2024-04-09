@@ -70,8 +70,12 @@ services:
     basedir: dubbo-samples-benchmark-consumer
     tests:
       - "**/*IT.class"
+    jvmFlags:
+      - "-javaagent:/tmp/skywalking-agent/skywalking-agent.jar"
     systemProps:
       - zookeeper.address=zookeeper
+      - skywalking.agent.service_name=dubbo-samples-benchmark-consumer
+      - skywalking.collector.backend_service=skywalking:11800
     volumes:
       - /tmp:/tmp
     waitPortsBeforeRun:
